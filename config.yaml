@@ -1,0 +1,15 @@
+# Set the URI of your MQTT broker here
+broker: tcp://<ip>:<port>
+
+# MQTT username
+# username: "batman"
+
+# MQTT password
+# password: "ih8jokr"
+
+# MQTT keep alive time (in seconds)
+# keepalive: 60
+
+# Global prefix for all MQTT topics
+# Defaults to <computername>/monitor/
+# prefix: batcave/screens/

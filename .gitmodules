@@ -1,0 +1,6 @@
+[submodule "src/vendor/paho.mqtt.c"]
+	path = src/vendor/paho.mqtt.c
+	url = https://github.com/eclipse/paho.mqtt.c.git
+[submodule "src/vendor/yaml-cpp"]
+	path = src/vendor/yaml-cpp
+	url = https://github.com/jbeder/yaml-cpp.git

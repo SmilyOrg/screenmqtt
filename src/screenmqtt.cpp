@@ -26,7 +26,7 @@
 #include "MQTTClient.h"
 #include "yaml-cpp/yaml.h"
 
-const std::string name = "screenmqtt 0.3";
+const std::string name = "screenmqtt 0.3.1";
 
 
 
@@ -94,6 +94,7 @@ public:
     }
 
     void subscribe(std::string topic) {
+        std::cout << "Subscribed to " << topic << std::endl;
         MCHECK(MQTTClient_subscribe(client, topic.c_str(), qos));
     }
 
@@ -603,12 +604,11 @@ struct Screen {
         for (auto &param : supported_params) {
             if (param.get_state) {
                 param.topic_state = topic_prefix + param.name + "/state";
-                std::cout << "PUB " << param.topic_state << std::endl;
+                std::cout << "Publishing to " << param.topic_state << std::endl;
             }
             if (param.set_state) {
                 param.topic_command = topic_prefix + param.name + "/command";
                 queue->subscribe(param.topic_command);
-                std::cout << "SUB " << param.topic_command << std::endl;
             }
         }
         publishAll();
@@ -854,9 +854,10 @@ int main(int argc, char *argv[]) {
         return 2;
     }
 
-    auto topic_prefix_all = queue.topic_prefix + "monitor/all/";
+    auto topic_prefix_all = queue.topic_prefix + "all/";
     topic_all_power_state = topic_prefix_all + "power/state";
     topic_all_power_command = topic_prefix_all + "power/command";
+    std::cout << "Publishing to " << topic_all_power_state << std::endl;
     queue.subscribe(topic_all_power_command);
     
     std::thread windows_thread(windows_run);

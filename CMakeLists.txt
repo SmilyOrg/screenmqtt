@@ -7,12 +7,14 @@ add_definitions(
 )
 
 set(includes
+	src/
 	src/vendor/paho.mqtt.c/src/
 	src/vendor/yaml-cpp/include/
 )
 
 file(GLOB sources
-	src/*.cpp
+	src/screenmqtt.cpp
+	src/msgqueue.cpp
 )
 
 add_subdirectory(src/vendor/paho.mqtt.c)

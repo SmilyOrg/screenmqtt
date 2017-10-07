@@ -23,146 +23,23 @@
 #include "LowLevelMonitorConfigurationAPI.h"
 #include "HighLevelMonitorConfigurationAPI.h"
 
-#include "MQTTClient.h"
 #include "yaml-cpp/yaml.h"
 
-const std::string name = "screenmqtt 0.3.1";
+#include "msgqueue.h"
 
+const std::string name = "screenmqtt 0.4.0";
 
+MessageQueueOptions global_options;
 
-#define CHECK(call) \
-    if (!call) { \
-        std::cerr << "Call to " #call " failed" << std::endl; \
-        return true; \
-    } \
+MessageQueue queue;
 
-#define MCHECK(call) { \
-    int rc = call; \
-    if (rc != MQTTCLIENT_SUCCESS) { \
-        std::cerr << "Call to " #call " failed (" << rc << ")" << std::endl; \
-    } \
-}
-
+std::string global_topic_prefix;
 std::mutex mutex;
 std::condition_variable cv;
 bool done = false;
 std::string topic_all_power_state;
 std::string topic_all_power_command;
 HWND window;
-
-
-int mqtt_received(void *context, char *topicName, int topicLen, MQTTClient_message *message);
-void mqtt_delivered(void *context, MQTTClient_deliveryToken dt);
-void mqtt_disconnected(void *context, char *cause);
-void receive_monitors(const std::string &topic, const std::string &payload);
-
-class MessageQueue {
-
-    MQTTClient client = nullptr;
-    int qos = 0;
-    int timeout = 10000;
-
-public:
-
-    std::string topic_prefix;
-
-    ~MessageQueue() {
-        disconnect();
-    }
-
-    void connect(
-        const std::string uri,
-        const std::string client_id,
-        const std::string topic_prefix,
-        MQTTClient_connectOptions opts = MQTTClient_connectOptions_initializer
-    ) {
-        opts.cleansession = true;
-
-        this->topic_prefix = topic_prefix;
-
-        MCHECK(MQTTClient_create(&client, uri.c_str(), client_id.c_str(), MQTTCLIENT_PERSISTENCE_NONE, nullptr));
-        MCHECK(MQTTClient_setCallbacks(client, this, mqtt_disconnected, mqtt_received, mqtt_delivered));
-        MCHECK(MQTTClient_connect(client, &opts));
-
-        printf("Topic prefix: %s\nClient: %s\nQoS: %d\n\nPress q or Ctrl-C to quit\n\n",
-            topic_prefix.c_str(), client_id.c_str(), qos);
-    }
-
-    void disconnect() {
-        if (client) MCHECK(MQTTClient_disconnect(this->client, timeout));
-        MQTTClient_destroy(&client);
-    }
-
-    void subscribe(std::string topic) {
-        std::cout << "Subscribed to " << topic << std::endl;
-        MCHECK(MQTTClient_subscribe(client, topic.c_str(), qos));
-    }
-
-    void publish(std::string topic, std::string payload) {
-        MCHECK(MQTTClient_publish(
-            client,
-            topic.c_str(),
-            payload.size(),
-            &payload[0],
-            qos,
-            true,
-            nullptr
-        ));
-    }
-
-    int received(char *topicName, int topicLen, MQTTClient_message *message)
-    {
-        std::string topic;
-
-        if (topicLen > 0) {
-            topic.resize(topicLen);
-            memcpy(&topic[0], topicName, topicLen);
-        }
-        else {
-            topic = topicName;
-        }
-
-        std::string payload;
-        payload.resize(message->payloadlen);
-        memcpy(&payload[0], message->payload, message->payloadlen);
-        printf("> %s: %s\n", topic.c_str(), payload.c_str());
-        
-        receive_monitors(topic, payload);
-        
-        MQTTClient_freeMessage(&message);
-        MQTTClient_free(topicName);
-        return 1;
-    }
-
-    void delivered(void *context, MQTTClient_deliveryToken dt)
-    {
-        fprintf(stderr, "Delivered: %d\n", dt);
-    }
-
-    void disconnected(void *context, char *cause)
-    {
-        fprintf(stderr, "\nConnection lost: %s\n", cause);
-    }
-
-} queue;
-
-int mqtt_received(void *context, char *topicName, int topicLen, MQTTClient_message *message) {
-    auto queue = static_cast<MessageQueue*>(context);
-    return queue->received(topicName, topicLen, message);
-}
-
-void mqtt_delivered(void *context, MQTTClient_deliveryToken dt)
-{
-    auto queue = static_cast<MessageQueue*>(context);
-    fprintf(stderr, "Delivered: %d\n", dt);
-}
-
-void mqtt_disconnected(void *context, char *cause)
-{
-    auto queue = static_cast<MessageQueue*>(context);
-    fprintf(stderr, "\nConnection lost: %s\n", cause);
-}
-
 
 
 void receive_monitors_all(const std::string &payload) {
@@ -182,7 +59,7 @@ void receive_monitors_all(const std::string &payload) {
 }
 
 void publish_monitors_all(const std::string &payload) {
-    queue.publish(topic_all_power_state, payload);
+    queue.publish(topic_all_power_state, payload, &global_options);
 }
 
 
@@ -476,7 +353,20 @@ struct Screen {
     }
 
     void printError(const char *msg) {
-        std::wcerr << index << ": " << desc << ": " << msg << std::endl;
+        DWORD lastError = GetLastError();
+        wchar_t lastErrorMsg[1024];
+        bool lastErrorValid = FormatMessageW(
+            FORMAT_MESSAGE_FROM_SYSTEM,
+            NULL,
+            lastError,
+            MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+            lastErrorMsg,
+            sizeof(lastErrorMsg),
+            NULL
+        ) > 0;
+        std::wcerr << index << ": " << desc << ": " << msg;
+        if (lastErrorValid) std::wcerr << ": " << lastErrorMsg;
+        std::wcerr << " (" << GetLastError() << ")" << std::endl;
     }
 
     void updateInfo() {
@@ -489,7 +379,7 @@ struct Screen {
                 &cap_flags,
                 &cap_color_temp
             )) {
-                printError("error updating flags");
+                printError("Error updating flags");
                 return;
             }
 
@@ -506,7 +396,7 @@ struct Screen {
             printf("    length\n");
             DWORD cap_len;
             if (!GetCapabilitiesStringLength(monitor, &cap_len)) {
-                printError("error getting length");
+                printError("Error getting length");
                 return;
             }
             std::string cap;
@@ -518,7 +408,7 @@ struct Screen {
                 (LPSTR)&cap[0],
                 cap_len
             )) {
-                printError("request failed");
+                printError("Request failed");
                 return;
             }
 
@@ -567,7 +457,7 @@ struct Screen {
     {
         std::string state = state_override.empty() ? param.get_state(monitor) : state_override;
         printf("< %s: %s\n", param.topic_state.c_str(), state.c_str());
-        queue->publish(param.topic_state, state);
+        queue->publish(param.topic_state, state, &global_options);
     }
 
     void publishAll()
@@ -599,7 +489,7 @@ struct Screen {
         if (queue == nullptr) return;
 
         this->queue = queue;
-        this->topic_prefix = queue->topic_prefix + model + "/";
+        this->topic_prefix = global_topic_prefix + model + "/";
         
         for (auto &param : supported_params) {
             if (param.get_state) {
@@ -662,7 +552,11 @@ BOOL CALLBACK EnumDisplayCallback(
 
     monitors.resize(physical_num);
 
-    CHECK(GetPhysicalMonitorsFromHMONITOR(hMonitor, physical_num, &monitors[0]));
+    bool success = GetPhysicalMonitorsFromHMONITOR(hMonitor, physical_num, &monitors[0]) == TRUE;
+    if (!success) {
+        std::cerr << "Unable to get physical monitors" << std::endl;
+        return true;
+    }
 
     for (DWORD i = 0; i < physical_num; i++) {
         PHYSICAL_MONITOR *mon = &monitors[i];
@@ -793,58 +687,72 @@ std::string get_default_topic_prefix() {
     return topic_prefix;
 }
 
+template <class T>
+bool initOptionSilent(const YAML::Node &yaml, std::string prop, std::string name, T* config) {
+    auto value = yaml[prop];
+    if (value) {
+        *config = value.as<T>();
+        return true;
+    }
+    return false;
+}
 
+template <class T>
+bool initOption(const YAML::Node &yaml, std::string prop, std::string name, T* config) {
+    bool exists = initOptionSilent(yaml, prop, name, config);
+    if (exists) std::cout << name << ": " << *config << std::boolalpha << std::endl;
+    return exists;
+}
+
+template <class T>
+bool initOptionHidden(const YAML::Node &yaml, std::string prop, std::string name, T* config) {
+    bool exists = initOptionSilent(yaml, prop, name, config);
+    if (exists) std::cout << name << ": *****" << std::endl;
+    return exists;
+}
+
+void queueDisconnected(std::string cause) {
+    if (!queue.config.reconnect) exit(3);
+}
+
+void queueReceived(std::string topic, std::string payload) {
+    receive_monitors(topic, payload);
+}
 
 int main(int argc, char *argv[]) {
 
     std::cout << name << "\n\n";
 
-    std::string uri;
-    std::string user;
-    std::string pass;
-    std::string topic_prefix = get_default_topic_prefix();
+    global_options.retained = true;
+
+    queue.config.client_id = name;
+    queue.onReceived = std::bind(&queueReceived, std::placeholders::_1, std::placeholders::_2);
+    queue.onDisconnected = std::bind(&queueDisconnected, std::placeholders::_1);
+
+    global_topic_prefix = get_default_topic_prefix();
 
     try {
-        YAML::Node config = YAML::LoadFile("config.yaml");
+        YAML::Node yaml = YAML::LoadFile("config.yaml");
 
-        MQTTClient_connectOptions opts = MQTTClient_connectOptions_initializer;
-
-        auto broker = config["broker"];
-        auto username = config["username"];
-        auto password = config["password"];
-        auto keepalive = config["keepalive"];
-        auto prefix = config["prefix"];
-
+        auto broker = yaml["broker"];
         if (!broker) throw "'broker' not found";
-        uri = broker.as<std::string>();
-        std::cout << "Broker: " << uri << std::endl;
+        queue.config.uri = broker.as<std::string>();
+        std::cout << "Broker: " << queue.config.uri << std::endl;
 
-        if (username) {
-            user = username.as<std::string>();
-            opts.username = user.c_str();
-            std::cout << "Username: " << opts.username << std::endl;
-        }
-        if (password) {
-            pass = password.as<std::string>();
-            opts.password = pass.c_str();
-            std::cout << "Password: *****" << std::endl;
-        }
-        if (keepalive) {
-            opts.keepAliveInterval = keepalive.as<int>();
-            std::cout << "Keep alive: " << opts.keepAliveInterval << std::endl;
-        }
-        if (prefix) {
-            topic_prefix = prefix.as<std::string>();
-        }
+        initOption(yaml, "username", "Username", &queue.config.username);
+        initOptionHidden(yaml, "password", "Password", &queue.config.password);
+        initOption(yaml, "keepalive", "Keep alive", &queue.config.keep_alive_interval);
+        initOption(yaml, "prefix", "Topic prefix", &global_topic_prefix);
+        initOption(yaml, "reconnect", "Reconnect", &queue.config.reconnect);
+        initOption(yaml, "connect timeout", "Connect timeout", &queue.config.connectTimeout);
+        initOption(yaml, "disconnect timeout", "Disconnect timeout", &queue.config.disconnectTimeout);
+        initOption(yaml, "backoff min", "Backoff minimum", &queue.config.backoff_min);
+        initOption(yaml, "backoff max", "Backoff maximum", &queue.config.backoff_max);
 
-        std::cout << std::endl;
-
-        queue.connect(
-            uri,
-            name,
-            topic_prefix,
-            opts
-        );
+        int error = queue.connect();
+        if (error) {
+            return 3;
+        }
 
     } catch (YAML::BadFile badFile) {
         std::cerr << "Error: config.yaml not found (" << badFile.msg << ")" << std::endl;
@@ -854,7 +762,7 @@ int main(int argc, char *argv[]) {
         return 2;
     }
 
-    auto topic_prefix_all = queue.topic_prefix + "all/";
+    std::string topic_prefix_all = global_topic_prefix + "all/";
     topic_all_power_state = topic_prefix_all + "power/state";
     topic_all_power_command = topic_prefix_all + "power/command";
     std::cout << "Publishing to " << topic_all_power_state << std::endl;

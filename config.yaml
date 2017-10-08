@@ -1,15 +1,32 @@
-# Set the URI of your MQTT broker here
+# URI of your MQTT broker
 broker: tcp://<ip>:<port>
 
-# MQTT username
+# Username for MQTT (default none)
 # username: "batman"
 
-# MQTT password
-# password: "ih8jokr"
+# Password for MQTT (default none)
+# password: "jkrsucks420"
 
-# MQTT keep alive time (in seconds)
-# keepalive: 60
+# Keep alive interval (seconds, default 15)
+# keepalive: 20
 
-# Global prefix for all MQTT topics
-# Defaults to <computername>/monitor/
+# Global prefix for all MQTT topics (default <computername>/monitor/)
 # prefix: batcave/screens/
+
+# Reconnect on connection loss (default true)
+#   Reconnection works with a random backoff algorithm, starting at
+#   "backoff min" and exponentially increasing until reaching "backoff max"
+#   If false, application quits on a failed connection or on connection loss.
+# reconnect: false
+
+# Reconnection minimum interval (milliseconds, default 50)
+# backoff min: 10
+
+# Reconnection maximum interval (milliseconds, default 2000)
+# backoff max: 10000
+
+# Connection timeout (seconds, default 1)
+# connect timeout: 3
+
+# Disconnection timeout (seconds, default 4)
+# disconnect timeout: 2

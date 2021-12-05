@@ -616,7 +616,7 @@ void update_monitors() {
     connect_monitors();
 }
 
-long __stdcall WindowProcedure(HWND window, unsigned int msg, WPARAM wp, LPARAM lp)
+LRESULT CALLBACK WindowProcedure(HWND window, unsigned int msg, WPARAM wp, LPARAM lp)
 {
     switch (msg)
     {

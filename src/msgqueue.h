@@ -31,6 +31,7 @@ struct MessageQueueOptions {
 class MessageQueue {
 protected:
     MQTTClient client = nullptr;
+    std::vector<std::pair<std::string, MessageQueueOptions>> subscriptions;
 
     int backoff_cur = 0;
 

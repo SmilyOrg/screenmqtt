@@ -26,5 +26,5 @@ target_include_directories(screenmqtt PRIVATE ${includes})
 
 add_custom_command(TARGET screenmqtt POST_BUILD
 	COMMAND ${CMAKE_COMMAND} -E copy_if_different
-		"${PROJECT_SOURCE_DIR}/build/src/vendor/paho.mqtt.c/src/$<CONFIGURATION>/paho-mqtt3c.dll"
+		"$<TARGET_FILE:paho-mqtt3c>"
 		$<TARGET_FILE_DIR:screenmqtt>/paho-mqtt3c.dll)

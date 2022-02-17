@@ -65,6 +65,17 @@ int MessageQueue::connect()
 
     // Connect to server
     error = MQTTClient_connect(client, &opts);
+    if (!error) {
+        // If this is a reconnection attempt, we might have previously subscribed to topics,
+        // so we try to resubscribe to them here.
+        for (std::pair<std::string, MessageQueueOptions> sub: subscriptions) {
+            error = MQTTClient_subscribe(client, sub.first.c_str(), sub.second.qos);
+            if (error) {
+                std::cout << "Unable to resubscribe" << std::endl;
+                break;
+            }
+        }
+    }
     if (error) {
         logError(error, "Unable to connect to server");
         if (config.reconnect) {
@@ -113,6 +124,7 @@ int MessageQueue::subscribe(std::string topic, const MessageQueueOptions *option
     }
 
     std::cout << "Subscribed to " << topic << std::endl;
+    subscriptions.push_back({ topic, *options });
     return 0;
 }
 

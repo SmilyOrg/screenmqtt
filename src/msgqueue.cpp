@@ -18,48 +18,46 @@ static int logError(int code, std::string message) {
 
 int MessageQueue::connect()
 {
-    // Cleanup
-    if (client) {
-        MQTTClient_destroy(&client);
-        client = nullptr;
-    }
-
     if (!backoff_cur) backoff_cur = config.backoff_min;
 
-    // Setup config
-    MQTTClient_connectOptions opts = MQTTClient_connectOptions_initializer;
-    if (!config.username.empty()) opts.username = config.username.c_str();
-    if (!config.password.empty()) opts.password = config.password.c_str();
-    opts.keepAliveInterval = config.keep_alive_interval;
-    opts.cleansession = true;
-    opts.connectTimeout = config.connectTimeout;
-    opts.retryInterval = -1;
-    
-    int error;
+	int error;
 
-    // Create client
-    error = MQTTClient_create(
-        &client,
-        config.uri.c_str(),
-        config.client_id.c_str(),
-        MQTTCLIENT_PERSISTENCE_NONE,
-        nullptr
-    );
-    if (error) {
-        return logError(error, "Unable to create MQTT client");
-    }
+	if (client && MQTTClient_isConnected(client)) return 0;
 
-    // Set callbacks
-    error = MQTTClient_setCallbacks(
-        client,
-        this,
-        mqtt_disconnected,
-        mqtt_received,
-        mqtt_delivered
-    );
-    if (error) {
-        return logError(error, "Unable to set MQTT callbacks");
-    }
+	// Setup config
+	MQTTClient_connectOptions opts = MQTTClient_connectOptions_initializer;
+	if (!config.username.empty()) opts.username = config.username.c_str();
+	if (!config.password.empty()) opts.password = config.password.c_str();
+	opts.keepAliveInterval = config.keep_alive_interval;
+	opts.cleansession = true;
+	opts.connectTimeout = config.connectTimeout;
+	opts.retryInterval = -1;
+
+	if (!client) {
+		// Create client
+		error = MQTTClient_create(
+			&client,
+			config.uri.c_str(),
+			config.client_id.c_str(),
+			MQTTCLIENT_PERSISTENCE_NONE,
+			nullptr
+		);
+		if (error) {
+			return logError(error, "Unable to create MQTT client");
+		}
+
+		// Set callbacks
+		error = MQTTClient_setCallbacks(
+			client,
+			this,
+			mqtt_disconnected,
+			mqtt_received,
+			mqtt_delivered
+		);
+		if (error) {
+			return logError(error, "Unable to set MQTT callbacks");
+		}
+	}
 
     std::cout << "Connecting" << std::endl;
 
@@ -97,8 +95,9 @@ int MessageQueue::disconnect()
         if (error) {
             return logError(error, "Unable to disconnect from server");
         }
+		MQTTClient_destroy(&client);
+		client = nullptr;
     }
-    MQTTClient_destroy(&client);
     return 0;
 }
 

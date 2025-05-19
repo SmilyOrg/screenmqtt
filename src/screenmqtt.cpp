@@ -5,6 +5,7 @@
 
 #include <iostream>
 #include <vector>
+#include <codecvt>
 #include <string>
 #include <iomanip>
 #include <bitset>
@@ -616,7 +617,33 @@ void update_monitors() {
     connect_monitors();
 }
 
-long __stdcall WindowProcedure(HWND window, unsigned int msg, WPARAM wp, LPARAM lp)
+// std::wstring utf8_to_wstring(const std::string& s)
+// {
+//     int len;
+//     int slength = (int)s.length() + 1;
+//     len = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), slength, 0, 0); 
+//     wchar_t* buf = new wchar_t[len];
+//     MultiByteToWideChar(CP_UTF8, 0, s.c_str(), slength, buf, len);
+//     std::wstring r(buf);
+//     delete[] buf;
+//     return r;
+// }
+
+// convert UTF-8 string to wstring
+std::wstring utf8_to_wstring (const std::string& str)
+{
+    std::wstring_convert<std::codecvt_utf8<wchar_t>> myconv;
+    return myconv.from_bytes(str);
+}
+
+// convert wstring to UTF-8 string
+std::string wstring_to_utf8 (const std::wstring& str)
+{
+    std::wstring_convert<std::codecvt_utf8<wchar_t>> myconv;
+    return myconv.to_bytes(str);
+}
+
+LRESULT CALLBACK WindowProcedure(HWND window, unsigned int msg, WPARAM wp, LPARAM lp)
 {
     switch (msg)
     {
@@ -646,40 +673,41 @@ long __stdcall WindowProcedure(HWND window, unsigned int msg, WPARAM wp, LPARAM 
         PostQuitMessage(0);
         return 0L;
     default:
-        return DefWindowProc(window, msg, wp, lp);
+        return DefWindowProcW(window, msg, wp, lp);
     }
 }
 
 void windows_run() {
     update_monitors();
-    WNDCLASSEX wndclass = {
+    LPCWSTR class_name = utf8_to_wstring(name).c_str();
+    WNDCLASSEXW wndclass = {
         sizeof(WNDCLASSEX), 0, WindowProcedure,
-        0, 0, GetModuleHandle(0), nullptr,
+        0, 0, GetModuleHandleW(0), nullptr,
         nullptr, nullptr,
-        0, name.c_str(), nullptr };
-    if (RegisterClassEx(&wndclass))
+        0, class_name, nullptr };
+    if (RegisterClassExW(&wndclass))
     {
-        window = CreateWindowEx(0, name.c_str(), "Spooky hidden ghost title!",
+        window = CreateWindowExW(0, class_name, L"Spooky hidden ghost title!",
             WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
-            CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, GetModuleHandle(0), 0);
+            CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, GetModuleHandleW(0), 0);
         if (window)
         {
             MSG msg;
             RegisterPowerSettingNotification(window, &GUID_MONITOR_POWER_ON, 0);
             // Alternative newer API
             //RegisterPowerSettingNotification(window, &GUID_CONSOLE_DISPLAY_STATE, 0);
-            while (GetMessage(&msg, 0, 0, 0)) DispatchMessage(&msg);
+            while (GetMessageW(&msg, 0, 0, 0)) DispatchMessageW(&msg);
         }
     }
 }
 
 std::string get_default_topic_prefix() {
     std::string topic_prefix = "pc/";
-    char comp_name[MAX_COMPUTERNAME_LENGTH];
-    DWORD comp_name_len = MAX_COMPUTERNAME_LENGTH;
-    if (GetComputerName(comp_name, &comp_name_len) != 0) {
-        topic_prefix.resize(comp_name_len);
-        memcpy(&topic_prefix[0], comp_name, comp_name_len);
+    WCHAR comp_name[MAX_COMPUTERNAME_LENGTH + 1];
+    DWORD comp_name_len = MAX_COMPUTERNAME_LENGTH + 1;
+    if (GetComputerNameW(comp_name, &comp_name_len) != 0) {
+        std::wstring wname = std::wstring(comp_name, comp_name_len);
+        topic_prefix = wstring_to_utf8(comp_name);
         std::transform(topic_prefix.begin(), topic_prefix.end(), topic_prefix.begin(), ::tolower);
         topic_prefix += "/";
     }

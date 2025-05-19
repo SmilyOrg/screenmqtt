@@ -4,6 +4,8 @@ include(ExternalProject)
 project(screenmqtt VERSION 0.2 LANGUAGES CXX)
 
 add_definitions(
+	-DUNICODE
+	-D_UNICODE
 )
 
 set(includes
